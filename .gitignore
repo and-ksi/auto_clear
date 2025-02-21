@@ -4,4 +4,4 @@ log/
 .idea/
 dist/
 build/
-zzwork.spec
+*.spec
