@@ -1,4 +1,7 @@
 .venv/
 disable/
 log/
-.idea
+.idea/
+dist/
+build/
+zzwork.spec
