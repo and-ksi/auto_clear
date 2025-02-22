@@ -4,3 +4,6 @@
 4.错误信息推送统一处理和发送,删除所有子函数中的错误信息编辑发送行为
 5,撤销上一步。
 6,已撤销。目前程序已经初步完成必要功能，稳定性测试中。
+7,稳定性测试初步通过。制作数据库收集部分。
+8,把chrome tst包含进程序中
+pyinstaller --onefile --add-data "C:\Program Files\Google\Chrome\Application\chrome-win64;chrome-win64" your_script.py

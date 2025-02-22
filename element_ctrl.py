@@ -3,7 +3,6 @@
 import re
 import time
 import tkinter as tk
-import requests
 
 from datetime import datetime
 from selenium import webdriver
@@ -46,6 +45,7 @@ class element_operate:
         self.passager = None
         self.phone = ""
         self.error_log_text = None
+        self.error_t = 0
         pass
 
     def work_flow(self):
@@ -70,7 +70,8 @@ class element_operate:
                         "visible": True
                     })
                 exit()
-                pass
+            else:
+                self.error.error_alart(message=f"程序运行结束，error_time = {self.error_time}.详情查看log文件。")
 
     def check_clue_loop(self):
         self.step = 2
@@ -98,6 +99,8 @@ class element_operate:
                     time.sleep(0.5)
                 mark = self.check_item_count()
                 if mark > 0:
+                    log_text = f"准备分配线索：____________________________________________"
+                    self.log.log_message(log_text)
                     self.clue_distribute()
                     self.clue_follow()
                     self.click_on_head(2)
@@ -123,6 +126,8 @@ class element_operate:
                     time.sleep(0.5)
                 mark = self.check_item_count()
                 if mark > 0:
+                    log_text = f"准备清洗线索：++++++++++++++++++++++++++++++++++++++++"
+                    self.log.log_message(log_text)
                     self.clue_clear()
 
         pass
@@ -231,7 +236,7 @@ class element_operate:
                 # # xpath_exp = "//button[span[text()='确定']]"
                 # element = self.try_find_element_from(element_sure, xpath_exp)
                 # self.click_element(element)
-                self.log.log_message(f"success clue_follow！\n______________________________________________")
+                self.log.log_message(f"success clue_follow！\n------------------------------------")
                 self.step = 2
                 return
             except:
@@ -695,7 +700,7 @@ class element_operate:
             text = element.text
             match = re.search(r'\d+', text)
             if match:
-                self.log.log_message(f"success check_item_count : {int(match.group())}", 1)
+                self.log.log_message(f"success check_item_count : {int(match.group())}")
                 return int(match.group())
             else:
                 error_text = "Match int error!"
@@ -810,6 +815,7 @@ class element_operate:
 
     def login_zz(self):
         self.step = 1
+        self.open_new_web()
 
         def on_confirm():
             root.quit()
