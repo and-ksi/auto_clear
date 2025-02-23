@@ -7,3 +7,5 @@ build/
 pic/
 *.spec
 test.py
+*.xlsx
+*.accdb

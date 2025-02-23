@@ -22,11 +22,11 @@ from data_file import ZZData
 from data_file import ConfigManager
 
 debug_port = 11248
-usr_dir = "user-data-dir=D:\\file\\python\\chrome-win64"
+usr_dir = "user-data-dir=D:\\file\\python\\chrome-win64-copy"
 work_url = "https://zz-dealer.bydauto.com.cn"
 # work_url = "https://zz-dealer.bydauto.com.cn/#/login"
 end_time = 18
-visiable_value = 0
+visiable_value = 1
 
 
 # error_time = 100 : 到达当天清洗结束时间
@@ -37,6 +37,8 @@ class element_operate:
     def __init__(self):
         # debug
         self.log = Log_save()
+        self.zzdata = ZZData()
+        self.data = []
         self.driver = None
         self.timeout = 6
         self.step = 0
@@ -103,6 +105,9 @@ class element_operate:
                     log_text = f"准备分配线索：____________________________________________"
                     self.log.log_message(log_text)
                     self.clue_distribute()
+
+                    self.zzdata.add_or_update_batch(self.phone, self.data)
+
                     self.clue_follow()
                     self.click_on_head(2)
                     self.click_on_subhead(2)
@@ -312,6 +317,7 @@ class element_operate:
                 # 使用正则表达式匹配
                 match = re.search(pattern, name)
                 self.phone = match.group(1)
+                self.data.append(["手机号", self.phone])
 
                 log_text = f"准备线索分配：{name}"
                 self.log.log_message(log_text)
@@ -371,6 +377,7 @@ class element_operate:
                         break
 
                 if min_num < 0:
+                    self.data.append(["客户经理", ele_dropdowns[min_index].text])
                     self.try_click_element(ele_dropdowns[min_index])
                 else:
                     self.error.error_alart("min_num < 0")
@@ -392,13 +399,19 @@ class element_operate:
                 # xpath_exp = "//button[span[text()='确定']]"
                 element = self.try_find_element_from(element_sure, xpath_exp)
                 self.try_click_element(element)
-                self.log.log_message(f"success clue_clear！{name}")
+                self.log.log_message(f"success clue_distribute！{name}")
                 return
             except:
                 self.log.log_message(f"线索分配第{retries + 1}次重试...", 4)
                 self.driver.refresh()  # 直接使用 driver.refresh()  刷新页面
                 retries += 1
                 time.sleep(1)
+
+                # 筛选并删除匹配特定字符串的项
+                filtered_data = self.data
+                filtered_data = [item for item in filtered_data if item[0] != "手机号"]
+                filtered_data = [item for item in filtered_data if item[0] != "客户经理"]
+                self.data = filtered_data
         self.error_time = 101
         raise Exception("操作失败，已达最大重试次数")
         pass
@@ -540,6 +553,10 @@ class element_operate:
 
                 # 线索时间判断
                 now_time = self.read_label_in_table("线索创建时间")
+                self.data.append(["线索创建时间", now_time])
+                value = re.match(r"^[^\-]+", name).group().strip()
+                self.data.append(["姓名", value])
+
                 if convert_to_timestamp(now_time) >= get_today_18_timestamp():
                     self.error_time = 100
                     log_text = f"今日线索清洗完毕。"
@@ -562,8 +579,27 @@ class element_operate:
                     # el-select-dropdown__item
                     xpath_exp = ".//li[contains(@class, 'el-select-dropdown__item')]"
                     ele = self.try_find_element_from(element_sele, xpath_exp)
+                    self.data.append(["意向车系", ele.text])
                     self.try_click_element(ele)
+                else:
+                    self.data.append(["意向车系", value])
+
+                try:
+                    value = self.read_label_in_table("参与活动")
+                    self.data.append(["参与活动", value])
+                except:
                     pass
+                try:
+                    value = self.read_label_in_table("来源平台")
+                    self.data.append(["来源平台", value])
+                except:
+                    pass
+                try:
+                    value = self.read_label_in_table("线索类别")
+                    self.data.append(["线索类别", value])
+                except:
+                    pass
+
                 texture = "线索清洗au"
                 xpath_exp = "//textarea[@placeholder='请输入备注内容']"
                 textarea = self.try_find_element_from(correct_label, xpath_exp)
@@ -586,6 +622,16 @@ class element_operate:
                 self.driver.refresh()
                 retries += 1
                 time.sleep(1)
+
+                # 筛选并删除匹配特定字符串的项
+                filtered_data = self.data
+                filtered_data = [item for item in filtered_data if item[0] != "线索创建时间"]
+                filtered_data = [item for item in filtered_data if item[0] != "姓名"]
+                filtered_data = [item for item in filtered_data if item[0] != "意向车系"]
+                filtered_data = [item for item in filtered_data if item[0] != "参与活动"]
+                filtered_data = [item for item in filtered_data if item[0] != "来源平台"]
+                filtered_data = [item for item in filtered_data if item[0] != "线索类别"]
+                self.data = filtered_data
         self.error_time = 101
         raise Exception("操作失败，已达最大重试次数")
         pass
@@ -722,7 +768,7 @@ class element_operate:
     def click_table_link(self, key=0):
         debug_text = f"ready click_table_link {key}"
         self.log.log_message(debug_text, 1)
-        xpath_expression = "//*[contains(@class, 'click_link')]"
+        xpath_expression = "//span[contains(@class, 'click_link')]"
         elements = self.try_find_elements(xpath_expression)
         length = len(elements)
         element = None
@@ -741,6 +787,14 @@ class element_operate:
         debug_text = f"success click_table_link {key}"
         self.log.log_message(debug_text, 1)
         return element
+
+    def wait_load_mask(self):
+        start_time = time.time()
+        xpath_expression = "//div[contains(@class, 'el-loading-mask') and contains(@style, 'display: none;')]"
+        while not self.try_find_element_nerror(xpath_expression):
+            if time.time() - start_time > self.timeout:
+                self.error.error_alart(message="等待表格加载时间过久，检查网络连接。")
+            time.sleep(0.5)
 
     def click_on_radio_button(self, child):
         debug_text = f"ready click_on_radio_button {child}, step = {self.step}"
@@ -768,9 +822,7 @@ class element_operate:
         element = self.try_find_clickable_element(xpath_expression)
         self.try_click_element(element)
 
-        xpath_expression = "//div[contains(@class, 'el-loading-mask') and contains(@style, 'display: none;')]"
-        while not self.try_find_element_nerror(xpath_expression):
-            time.sleep(0.5)
+        self.wait_load_mask()
 
         debug_text = f"success click_on_radio_button {child} = {keyword}"
         self.log.log_message(debug_text, 1)
@@ -819,7 +871,7 @@ class element_operate:
         debug_text = f"success click_on_head {child} = {keyword}"
         self.log.log_message(debug_text, 1)
 
-    def wait_window(self, title="error", text="待点击"):
+    def wait_window(self, title="error", textf="待点击"):
         def on_confirm():
             root.quit()
 
@@ -827,7 +879,7 @@ class element_operate:
         root.title(title)
         root.geometry("300x150")
 
-        label = tk.Label(root, text, font=("Helvetica", 14))
+        label = tk.Label(root, text=textf, font=("Helvetica", 14))
         label.pack(pady=20)
 
         confirm_button = tk.Button(root, text="确认", command=on_confirm, font=("Helvetica", 12))
@@ -839,11 +891,11 @@ class element_operate:
 
     def login_zz(self):
         self.step = 1
-        self.open_new_web()
+        self.open_new_web(login_mark=1)
         self.wait_window("等待登录", "请等待弹出的智蛛页面加载完毕，之后手动登录。成功后点击确认继续运行程序。")
         pass
 
-    def open_new_web(self, visible=visiable_value, max_retries=2):
+    def open_new_web(self, visible=visiable_value, login_mark=None, max_retries=2):
         self.step = 0
         if not visible:
             self.log.log_message("ready open_new_web_invisible")
@@ -873,6 +925,8 @@ class element_operate:
         # 设置隐式等待时间为10秒
 
         # el-button el-button--default
+        if login_mark:
+            return
 
         retries = 0
         while retries < max_retries:
@@ -1034,9 +1088,7 @@ class element_operate:
             try:
                 debug_text = f"查找-尝试查找多个元素（{xpath_exp}），当前步骤：{self.step}"
                 self.log.log_message(debug_text)
-                elements = WebDriverWait(self.driver, self.timeout).until(
-                    EC.visibility_of_all_elements_located((By.XPATH, xpath_exp))
-                )
+                elements = WebDriverWait(self.driver, self.timeout).until(EC.presence_of_all_elements_located((By.XPATH, xpath_exp)))
                 return elements
             except Exception as e:
                 error_text = f"查找fail-多个元素（{xpath_exp}）未能成功找到或显示，超时时间 {self.timeout} 秒。当前步骤：{self.step}."
@@ -1129,14 +1181,86 @@ class element_operate:
                 time.sleep(0.5)  # 等待0.5秒后重新尝试
         pass
 
+    def find_second_subele(self, label, class_n, pa_ele):
+
+        xpath_exp = f"//*[contains(@class, '{class_n}') and .//*[contains(text(), '{label}')]]"
+        ele = self.try_find_element_from(pa_ele, xpath_exp)
+        # 然后在parent_element下查找第二个子元素
+        second_child_xpath = "./* [position()=2]"
+        second_child_element = self.try_find_element_from(ele, second_child_xpath)
+        return second_child_element
+
     def check_data_to_mysql(self):
+        zzdata = ZZData()
+
         self.log.start_log()
         self.error_time = 0
-        self.open_new_web(visible=1)
+        count = 0
+        self.open_new_web(visible=1, login_mark=1)
         self.wait_window("等待打开待扫描页面", "打开待扫描页面后关闭")
+        total = self.check_item_count()
+        while 1:
+            expath_exp = "//*[contains(@class, 'click_link')]"
+            table_links = self.try_find_elements(expath_exp)
+            row = 0
+            len_ele = len(table_links)
+            while row < len_ele:
+                table_links = self.try_find_elements(expath_exp)
+                link = table_links[row]
+                row += 1
+                data = []
+                "车友383479 - 15391000937"
+                phone = re.search(r'-\s*(\S+)', link.text).group(1)
+                name = re.match(r"^[^\-]+", link.text).group().strip()
+                data.append([zzdata.labels_title[0], phone])
+                data.append([zzdata.labels_title[1], name])
 
+                self.try_click_element(link)
+                xpath_exp = f"//div[contains(@class, 'whiteBox')]//*[contains(text(), '{phone}')]"
+                pa_ele = self.try_find_element(xpath_exp)
+                ta_ele = self.find_second_subele('客户经理', 'pure-g', pa_ele)
+                data.append(['客户经理', ta_ele.text])
+                ta_ele = self.find_second_subele('客户级别', 'pure-g', pa_ele)
+                data.append(['客户级别', ta_ele.text])
+                ta_ele = self.find_second_subele('意向车系', 'pure-g', pa_ele)
+                data.append(['意向车系', ta_ele.text])
+                time.sleep(0.5)
+                self.click_table_link()  # 点击线索详情
+                xpath_exp = f"//div[contains(@class, 'el-dialog') and .//*[contains(text(), '线索详情')]]"
+                pa_ele = self.try_find_element(xpath_exp)
+                ta_ele = self.find_second_subele('来源平台', 'el-form-item', pa_ele)
+                data.append(['来源平台', ta_ele.text])
+                ta_ele = self.find_second_subele('线索类别', 'el-form-item', pa_ele)
+                data.append(['线索类别', ta_ele.text])
+                try:
+                    ta_ele = self.find_second_subele('参与活动', 'el-form-item', pa_ele)
+                    data.append(['参与活动', ta_ele.text])
+                except:
+                    pass
+                ta_ele = self.find_second_subele('线索创建时间', 'el-form-item', pa_ele)
+                data.append(['线索创建时间', ta_ele.text])
 
-        pass
+                zzdata.add_or_update_batch(phone, data)
+                count += 1
+                xpath_exp = ".//button/span[contains(text(), '关闭')]"
+                ta_ele = self.try_find_element_from(pa_ele, xpath_exp)
+                self.try_click_element(ta_ele)
+                self.click_on_head(3)
+                self.wait_load_mask()
+
+            xpath_exp = "//button[contains(@class, 'btn-next')]"
+            next = self.try_find_element(xpath_exp)
+            if count >= total and zzdata.phone_exist(phone):
+                self.log.log_message("完成全部线索登记。")
+                self.log.log_message("线索完成登记")
+                exit()
+            try:
+                self.try_click_element(next)
+            except:
+                self.log.log_message("线索完成登记")
+                exit()
+            self.wait_load_mask()
+
 
 
 def convert_to_timestamp(time_str):

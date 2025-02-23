@@ -300,7 +300,7 @@ class ZZData:
         self.db_config = {
             'user': 'root',
             'password': 'and123456',
-            'host': f'{mysql_url}',
+            'host': mysql_url,
             'database': 'zzwork_database'
         }
 
@@ -319,14 +319,14 @@ class ZZData:
                 self.log.log_message(err, 4)
                 self.error.error_alart(message=err)
 
-        self.czzdata = self.conn.cursor()
         self.create_table()
 
     def create_database(self):
         try:
-            # 创建数据库
-            self.czzdata.execute("CREATE DATABASE zzwork_database DEFAULT CHARACTER SET 'utf8'")
+            cursor = self.conn.cursor()
+            cursor.execute("CREATE DATABASE zzwork_database DEFAULT CHARACTER SET 'utf8'")
             self.log.log_message("Database created successfully")
+            cursor.close()
         except mysql.connector.Error as err:
             self.log.log_message(f"Failed creating database: {err}", 4)
             self.error.error_alart(message=f"Failed creating database: {err}")
@@ -349,39 +349,44 @@ class ZZData:
             )
         '''
         try:
-            self.czzdata.execute(create_table_query)
+            cursor = self.conn.cursor()
+            cursor.execute(create_table_query)
             self.conn.commit()
             self.log.log_message("Table created successfully")
+            cursor.close()
         except mysql.connector.Error as err:
             self.log.log_message(f"Error while creating table: {err}", 4)
             self.error.error_alart(message=f"Error while creating table: {err}")
 
     def add_or_update(self, phone, label, value):
         try:
-            self.czzdata.execute('SELECT * FROM zzData WHERE 手机号=%s', (phone,))
-            record = self.czzdata.fetchone()
+            cursor = self.conn.cursor()
+            cursor.execute('SELECT * FROM zzData WHERE 手机号=%s', (phone,))
+            record = cursor.fetchone()
             if record:
                 # 更新记录
-                self.czzdata.execute(f'UPDATE zzData SET {label}=%s WHERE 手机号=%s', (value, phone))
+                cursor.execute(f'UPDATE zzData SET {label}=%s WHERE 手机号=%s', (value, phone))
                 self.log.log_message(f"UPDATE zzData SET {label}={value} WHERE 手机号={phone}")
             else:
                 # 插入新记录
-                self.czzdata.execute(f'INSERT INTO zzData (手机号, {label}) VALUES (%s, %s)', (phone, value))
+                cursor.execute(f'INSERT INTO zzData (手机号, {label}) VALUES (%s, %s)', (phone, value))
                 self.log.log_message(f"INSERT INTO zzData (手机号, {label}) VALUES ({phone}, {value})")
             self.conn.commit()
+            cursor.close()
         except mysql.connector.Error as err:
             self.log.log_message(f"Error while adding or updating: {err}", 4)
             self.error.error_alart(message=f"Error while adding or updating: {err}")
 
     def add_or_update_batch(self, phone, data):
         try:
-            self.czzdata.execute('SELECT * FROM zzData WHERE 手机号=%s', (phone,))
-            record = self.czzdata.fetchone()
+            cursor = self.conn.cursor()
+            cursor.execute('SELECT * FROM zzData WHERE 手机号=%s', (phone,))
+            record = cursor.fetchone()
             if record:
                 # 更新记录
                 for label, value in data:
                     self.log.log_message(f"UPDATE zzData SET {label}={value} WHERE 手机号={phone}")
-                    self.czzdata.execute(f'UPDATE zzData SET {label}=%s WHERE 手机号=%s', (value, phone))
+                    cursor.execute(f'UPDATE zzData SET {label}=%s WHERE 手机号=%s', (value, phone))
             else:
                 # 插入新记录
                 columns = [label for label, value in data if label != '手机号']  # 排除手机号
@@ -392,16 +397,19 @@ class ZZData:
                 values.insert(0, phone)
                 self.log.log_message(f"INSERT INTO zzData ({columns_str}) VALUES ({placeholders_str})", 1)
                 sql_query = f'INSERT INTO zzData ({columns_str}) VALUES ({placeholders_str})'
-                self.czzdata.execute(sql_query, values)
+                cursor.execute(sql_query, values)
             self.conn.commit()
+            cursor.close()
         except mysql.connector.Error as err:
             self.log.log_message(f"Error while batch adding or updating: {err}", 4)
             self.error.error_alart(message=f"Error while batch adding or updating: {err}")
 
     def query_value(self, phone, label):
         try:
-            self.czzdata.execute(f'SELECT {label} FROM zzData WHERE 手机号=%s', (phone,))
-            result = self.czzdata.fetchone()
+            cursor = self.conn.cursor()
+            cursor.execute(f'SELECT {label} FROM zzData WHERE 手机号=%s', (phone,))
+            result = cursor.fetchone()
+            cursor.close()
             return result[0] if result else None
         except mysql.connector.Error as err:
             self.log.log_message(f"Error while querying value: {err}", 4)
@@ -421,6 +429,29 @@ class ZZData:
             self.log.log_message(f"Error while querying values: {err}", 4)
             self.error.error_alart(message=f"Error while querying values: {err}")
             return values
+
+    def __del__(self):
+        # 在析构方法中关闭数据库连接
+        try:
+            if self.conn:
+                self.conn.close()
+            self.log.log_message("数据库连接已关闭")
+        except Exception as e:
+            self.log.log_message(f"关闭数据库连接时发生错误: {e}", 4)
+            self.error.error_alart(message=f"关闭数据库连接时发生错误: {e}")
+
+    def phone_exist(self, phone):
+        try:
+            cursor = self.conn.cursor()
+            query = "SELECT 1 FROM zzData WHERE 手机号 = %s LIMIT 1"
+            cursor.execute(query, (phone,))
+            result = cursor.fetchone()
+            cursor.close()
+            return result is not None
+        except mysql.connector.Error as err:
+            self.log.log_message(f"Error occurred while checking phone existence: {err}", 4)
+            self.error.error_alart(message=f"Error occurred while checking phone existence: {err}")
+            return
 
 
 class __Old_ZZData:
