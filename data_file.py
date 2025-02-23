@@ -6,7 +6,11 @@ import tkinter as tk
 import requests
 import pyodbc
 import win32com.client as win32
+import mysql.connector
+from mysql.connector import errorcode
 
+
+mysql_url = "192.168.116.128"
 
 class Post_Message:
     def __init__(self):
@@ -17,11 +21,11 @@ class Post_Message:
         self.name_uid = uid_conf.get_all_uid()
         pass
 
-    def post_error(self, message):
+    def post_error(self, message, title="py错误，已停止"):
         data = {
             "appToken": f"{self.appToken}",
-            "content": f"<h1>运行错误,程序已经停止！</h1><br/><p style=\"color:red;\">{message}</p>",
-            "summary": "<span style='color:red;'>py错误，已停止</span>",
+            "content": f"<h1>程序已经停止！</h1><br/><p style=\"color:red;\">{message}</p>",
+            f"summary": f"<span style='color:red;'>{title}</span>",
             "contentType": 2,
             "topicIds": [],
             "uids": [],
@@ -291,6 +295,141 @@ class ZZData:
 
     def __init__(self):
         self.error = Post_Message()
+
+        # 设置MySQL连接参数
+        self.db_config = {
+            'user': 'root',
+            'password': 'and123456',
+            'host': f'{mysql_url}',
+            'database': 'zzwork_database'
+        }
+
+        # 创建数据库连接
+        try:
+            self.conn = mysql.connector.connect(**self.db_config)
+            self.log.log_message("Connected to database successfully")
+        except mysql.connector.Error as err:
+            if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
+                self.log.log_message("Something is wrong with your user name or password", 4)
+                self.error.error_alart(message="Something is wrong with your user name or password")
+            elif err.errno == errorcode.ER_BAD_DB_ERROR:
+                self.log.log_message("Database does not exist", 4)
+                self.error.error_alart(message="Database does not exist")
+            else:
+                self.log.log_message(err, 4)
+                self.error.error_alart(message=err)
+
+        self.czzdata = self.conn.cursor()
+        self.create_table()
+
+    def create_database(self):
+        try:
+            # 创建数据库
+            self.czzdata.execute("CREATE DATABASE zzwork_database DEFAULT CHARACTER SET 'utf8'")
+            self.log.log_message("Database created successfully")
+        except mysql.connector.Error as err:
+            self.log.log_message(f"Failed creating database: {err}", 4)
+            self.error.error_alart(message=f"Failed creating database: {err}")
+
+    def create_table(self):
+        create_table_query = '''
+            CREATE TABLE IF NOT EXISTS zzData (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                手机号 VARCHAR(255),
+                姓名 VARCHAR(255),
+                客户经理 VARCHAR(255),
+                客户级别 VARCHAR(255),
+                意向车系 VARCHAR(255),
+                来源平台 VARCHAR(255),
+                参与活动 VARCHAR(255),
+                线索类别 VARCHAR(255),
+                购车地区 VARCHAR(255),
+                线索创建时间 VARCHAR(255),
+                有效跟进时间 VARCHAR(255)
+            )
+        '''
+        try:
+            self.czzdata.execute(create_table_query)
+            self.conn.commit()
+            self.log.log_message("Table created successfully")
+        except mysql.connector.Error as err:
+            self.log.log_message(f"Error while creating table: {err}", 4)
+            self.error.error_alart(message=f"Error while creating table: {err}")
+
+    def add_or_update(self, phone, label, value):
+        try:
+            self.czzdata.execute('SELECT * FROM zzData WHERE 手机号=%s', (phone,))
+            record = self.czzdata.fetchone()
+            if record:
+                # 更新记录
+                self.czzdata.execute(f'UPDATE zzData SET {label}=%s WHERE 手机号=%s', (value, phone))
+                self.log.log_message(f"UPDATE zzData SET {label}={value} WHERE 手机号={phone}")
+            else:
+                # 插入新记录
+                self.czzdata.execute(f'INSERT INTO zzData (手机号, {label}) VALUES (%s, %s)', (phone, value))
+                self.log.log_message(f"INSERT INTO zzData (手机号, {label}) VALUES ({phone}, {value})")
+            self.conn.commit()
+        except mysql.connector.Error as err:
+            self.log.log_message(f"Error while adding or updating: {err}", 4)
+            self.error.error_alart(message=f"Error while adding or updating: {err}")
+
+    def add_or_update_batch(self, phone, data):
+        try:
+            self.czzdata.execute('SELECT * FROM zzData WHERE 手机号=%s', (phone,))
+            record = self.czzdata.fetchone()
+            if record:
+                # 更新记录
+                for label, value in data:
+                    self.log.log_message(f"UPDATE zzData SET {label}={value} WHERE 手机号={phone}")
+                    self.czzdata.execute(f'UPDATE zzData SET {label}=%s WHERE 手机号=%s', (value, phone))
+            else:
+                # 插入新记录
+                columns = [label for label, value in data if label != '手机号']  # 排除手机号
+                placeholders = ', '.join(['%s'] * len(columns))
+                values = [value for label, value in data if label != '手机号']  # 排除手机号
+                columns_str = ', '.join(['手机号'] + columns)
+                placeholders_str = '%s, ' + placeholders
+                values.insert(0, phone)
+                self.log.log_message(f"INSERT INTO zzData ({columns_str}) VALUES ({placeholders_str})", 1)
+                sql_query = f'INSERT INTO zzData ({columns_str}) VALUES ({placeholders_str})'
+                self.czzdata.execute(sql_query, values)
+            self.conn.commit()
+        except mysql.connector.Error as err:
+            self.log.log_message(f"Error while batch adding or updating: {err}", 4)
+            self.error.error_alart(message=f"Error while batch adding or updating: {err}")
+
+    def query_value(self, phone, label):
+        try:
+            self.czzdata.execute(f'SELECT {label} FROM zzData WHERE 手机号=%s', (phone,))
+            result = self.czzdata.fetchone()
+            return result[0] if result else None
+        except mysql.connector.Error as err:
+            self.log.log_message(f"Error while querying value: {err}", 4)
+            self.error.error_alart(message=f"Error while querying value: {err}")
+            return None
+
+    def query_values(self, phone, labels=None):
+        if labels is None:
+            labels = self.labels_title
+        values = []
+        try:
+            for label in labels:
+                value = self.query_value(phone, label)
+                values.append(value)
+            return values
+        except mysql.connector.Error as err:
+            self.log.log_message(f"Error while querying values: {err}", 4)
+            self.error.error_alart(message=f"Error while querying values: {err}")
+            return values
+
+
+class __Old_ZZData:
+    log = Log_save()
+    labels_title = ["手机号", "姓名", "客户经理", "客户级别", "意向车系", "来源平台", "参与活动", "线索类别",
+                    "购车地区", "线索创建时间", "有效跟进时间"]
+
+    def __init__(self):
+        self.error = Post_Message()
         # 获取当前程序的运行路径
         current_directory = os.getcwd()
         # 定义日志目录为当前路径下的 log 文件夹
@@ -372,22 +511,29 @@ class ZZData:
         self.conn.commit()
 
     def add_or_update_batch(self, phone, data):
-        self.czzdata.execute('SELECT * FROM zzData WHERE 手机号=?', (phone,))
-        record = self.czzdata.fetchone()
-        if record:
-            # 更新记录
-            for label, value in data:
-                self.log.log_message(f"UPDATE zzData SET {label}={value} WHERE 手机号={phone}")
-                self.czzdata.execute(f'UPDATE zzData SET {label}=? WHERE 手机号=?', (value, phone))
-        else:
-            # 插入新记录
-            columns = ['手机号'] + [label for label, value in data]
-            placeholders = ', '.join(['?'] * len(columns))
-            values = [str(phone)] + [str(value) for label, value in data]  # 确保所有值为字符串
-            self.log.log_message(f"INSERT INTO zzData ({', '.join(columns)}) VALUES ({', '.join(values)})")
-            sql_query = f'INSERT INTO zzData ({", ".join(columns)}) VALUES ({placeholders})'
-            self.czzdata.execute(sql_query, values)
-        self.conn.commit()
+        try:
+            self.czzdata.execute('SELECT * FROM zzData WHERE 手机号=%s', (phone,))
+            record = self.czzdata.fetchone()
+            if record:
+                # 更新记录
+                for label, value in data:
+                    self.log.log_message(f"UPDATE zzData SET {label}={value} WHERE 手机号={phone}")
+                    self.czzdata.execute(f'UPDATE zzData SET {label}=%s WHERE 手机号=%s', (value, phone))
+            else:
+                # 插入新记录
+                columns = [label for label, value in data]
+                placeholders = ', '.join(['%s'] * len(columns))
+                values = [value for label, value in data]
+                columns_str = ', '.join(['手机号'] + columns)
+                placeholders_str = '%s, ' + placeholders
+                values.insert(0, phone)
+                self.log.log_message(f"INSERT INTO zzData ({columns_str}) VALUES ({placeholders_str})", 1)
+                sql_query = f'INSERT INTO zzData ({columns_str}) VALUES ({placeholders_str})'
+                self.czzdata.execute(sql_query, values)
+            self.conn.commit()
+        except mysql.connector.Error as err:
+            self.log.log_message(f"Error while batch adding or updating: {err}", 4)
+            self.error.error_alart(message=f"Error while batch adding or updating: {err}")
 
     def query_value(self, phone, label):
         self.czzdata.execute(f'SELECT {label} FROM zzData WHERE 手机号=?', (phone,))

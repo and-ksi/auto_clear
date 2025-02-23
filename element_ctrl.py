@@ -1,5 +1,6 @@
 # "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=11248 --user-data-dir="D:\file\python\selenium_chrome"
 
+import os
 import re
 import time
 import tkinter as tk
@@ -25,7 +26,7 @@ usr_dir = "user-data-dir=D:\\file\\python\\chrome-win64"
 work_url = "https://zz-dealer.bydauto.com.cn"
 # work_url = "https://zz-dealer.bydauto.com.cn/#/login"
 end_time = 18
-visiable_value = 1
+visiable_value = 0
 
 
 # error_time = 100 : 到达当天清洗结束时间
@@ -57,21 +58,21 @@ class element_operate:
         finally:
             if self.error_time:
                 self.error.error_alart(message=f"程序运行出错，error_time = {self.error_time}.详情查看log文件。")
-                if visiable_value:
-                    # 切换为有头模式
-                    self.driver.execute_cdp_cmd("Browser.setWindowBounds", {
-                        "windowId": self.driver.window_handles[0],
-                        "bounds": {
-                            "width": 1920,
-                            "height": 1080
-                        }
-                    })
-                    self.driver.execute_cdp_cmd("Browser.setWindowVisible", {
-                        "visible": True
-                    })
-                exit()
-            else:
-                self.error.error_alart(message=f"程序运行结束，error_time = {self.error_time}.详情查看log文件。")
+            self.save_page_pic()
+            self.wait_window()
+
+    def save_page_pic(self):
+        if not os.path.exists('pic'):
+            os.makedirs('pic')
+
+        # 获取当前日期和时间，并格式化文件名
+        current_time = datetime.now().strftime("%Y%m%d-%H%M%S")
+        screenshot_filename = f"{current_time}.png"
+        # 截图并保存到 pic 文件夹
+        screenshot_path = os.path.join('pic', screenshot_filename)
+        self.driver.save_screenshot(screenshot_path)
+
+        self.log.log_message(f"截图已保存到 {screenshot_path}")
 
     def check_clue_loop(self):
         self.step = 2
@@ -766,6 +767,11 @@ class element_operate:
         xpath_expression = f"//label[contains(@class, 'el-radio-button') and contains(@class, 'el-radio-button--small') and .//span[text()='{keyword}']]"
         element = self.try_find_clickable_element(xpath_expression)
         self.try_click_element(element)
+
+        xpath_expression = "//div[contains(@class, 'el-loading-mask') and contains(@style, 'display: none;')]"
+        while not self.try_find_element_nerror(xpath_expression):
+            time.sleep(0.5)
+
         debug_text = f"success click_on_radio_button {child} = {keyword}"
         self.log.log_message(debug_text, 1)
 
@@ -813,19 +819,15 @@ class element_operate:
         debug_text = f"success click_on_head {child} = {keyword}"
         self.log.log_message(debug_text, 1)
 
-    def login_zz(self):
-        self.step = 1
-        self.open_new_web()
-
+    def wait_window(self, title="error", text="待点击"):
         def on_confirm():
             root.quit()
 
         root = tk.Tk()
-        root.title("等待登录")
+        root.title(title)
         root.geometry("300x150")
 
-        label = tk.Label(root, text="请等待弹出的智蛛页面加载完毕，之后手动登录。成功后点击确认继续运行程序。",
-                         font=("Helvetica", 14))
+        label = tk.Label(root, text, font=("Helvetica", 14))
         label.pack(pady=20)
 
         confirm_button = tk.Button(root, text="确认", command=on_confirm, font=("Helvetica", 12))
@@ -835,9 +837,15 @@ class element_operate:
         root.destroy()
         pass
 
-    def open_new_web(self, visible=None, max_retries=2):
+    def login_zz(self):
+        self.step = 1
+        self.open_new_web()
+        self.wait_window("等待登录", "请等待弹出的智蛛页面加载完毕，之后手动登录。成功后点击确认继续运行程序。")
+        pass
+
+    def open_new_web(self, visible=visiable_value, max_retries=2):
         self.step = 0
-        if visible:
+        if not visible:
             self.log.log_message("ready open_new_web_invisible")
             # 配置 Chrome 浏览器的数据路径和无头模式
             chrome_options = webdriver.ChromeOptions()
@@ -950,6 +958,23 @@ class element_operate:
                 error_text = f"查找fail-元素（{xpath_exp}）未能成功找到或显示，超时时间 {self.timeout} 秒。当前步骤：{self.step}\n"
                 self.log.log_message(error_text, 4)
                 raise Exception(error_text)
+        pass
+
+    def try_find_element_nerror(self, xpath_exp: str):
+        element = None
+        while True:
+            try:
+                element = WebDriverWait(self.driver, self.timeout).until(
+                    EC.presence_of_element_located((By.XPATH, xpath_exp))
+                )
+
+                debug_text = f"查找-元素（xpath = {xpath_exp}）查找成功，当前步骤：{self.step}\n"
+                self.log.log_message(debug_text)
+                return element
+            except:
+                error_text = f"查找fail-元素（{xpath_exp}）未能成功找到或显示，超时时间 {self.timeout} 秒。当前步骤：{self.step}\n"
+                self.log.log_message(error_text, 4)
+                return None
         pass
 
     def is_element_clickable(self, element):
@@ -1094,6 +1119,7 @@ class element_operate:
                 debug_text = f"点击-尝试点击元素（{element.text if element.text else '无文本'}），当前步骤：{self.step}, 第{count}次尝试"
                 self.log.log_message(debug_text)
                 element.click()
+                time.sleep(0.3)
                 return
             except WebDriverException as e:
                 if time.time() - start_time > self.timeout:
@@ -1101,6 +1127,15 @@ class element_operate:
                     self.log.log_message(error_text, 3)
                     raise Exception(error_text)
                 time.sleep(0.5)  # 等待0.5秒后重新尝试
+        pass
+
+    def check_data_to_mysql(self):
+        self.log.start_log()
+        self.error_time = 0
+        self.open_new_web(visible=1)
+        self.wait_window("等待打开待扫描页面", "打开待扫描页面后关闭")
+
+
         pass
 
 

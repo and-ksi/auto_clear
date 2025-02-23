@@ -7,3 +7,4 @@
 7,稳定性测试初步通过。制作数据库收集部分。
 8,把chrome tst包含进程序中
 pyinstaller --onefile --add-data "C:\Program Files\Google\Chrome\Application\chrome-win64;chrome-win64" your_script.py
+9，制作数据库收集、处理等部分

@@ -4,4 +4,6 @@ log/
 .idea/
 dist/
 build/
+pic/
 *.spec
+test.py
