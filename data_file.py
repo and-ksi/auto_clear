@@ -10,7 +10,7 @@ import mysql.connector
 from mysql.connector import errorcode
 
 
-mysql_url = "192.168.116.128"
+mysql_url = "47.122.41.220"
 
 class Post_Message:
     def __init__(self):
@@ -298,7 +298,7 @@ class ZZData:
 
         # 设置MySQL连接参数
         self.db_config = {
-            'user': 'root',
+            'user': 'and',
             'password': 'and123456',
             'host': mysql_url,
             'database': 'zzwork_database'
@@ -313,8 +313,8 @@ class ZZData:
                 self.log.log_message("Something is wrong with your user name or password", 4)
                 self.error.error_alart(message="Something is wrong with your user name or password")
             elif err.errno == errorcode.ER_BAD_DB_ERROR:
-                self.log.log_message("Database does not exist", 4)
-                self.error.error_alart(message="Database does not exist")
+                self.log.log_message("Database does not exist. Creating database...", 4)
+
             else:
                 self.log.log_message(err, 4)
                 self.error.error_alart(message=err)
@@ -323,10 +323,14 @@ class ZZData:
 
     def create_database(self):
         try:
-            cursor = self.conn.cursor()
+            db_config_no_db = self.db_config.copy()
+            db_config_no_db.pop('database')
+            conn_no_db = mysql.connector.connect(**db_config_no_db)
+            cursor = conn_no_db.cursor()
             cursor.execute("CREATE DATABASE zzwork_database DEFAULT CHARACTER SET 'utf8'")
             self.log.log_message("Database created successfully")
             cursor.close()
+            conn_no_db.close()
         except mysql.connector.Error as err:
             self.log.log_message(f"Failed creating database: {err}", 4)
             self.error.error_alart(message=f"Failed creating database: {err}")
@@ -377,7 +381,18 @@ class ZZData:
             self.log.log_message(f"Error while adding or updating: {err}", 4)
             self.error.error_alart(message=f"Error while adding or updating: {err}")
 
-    def add_or_update_batch(self, phone, data):
+    def remove_duplicates(self, data):
+        seen = set()
+        result = []
+        for item in data:
+            if item[0] not in seen:
+                result.append(item)
+                seen.add(item[0])
+        return result
+
+    def add_or_update_batch(self, phone, sdata):
+        data = self.remove_duplicates(sdata)
+        cursor = None
         try:
             cursor = self.conn.cursor()
             cursor.execute('SELECT * FROM zzData WHERE 手机号=%s', (phone,))
@@ -401,6 +416,7 @@ class ZZData:
             self.conn.commit()
             cursor.close()
         except mysql.connector.Error as err:
+            cursor.close()
             self.log.log_message(f"Error while batch adding or updating: {err}", 4)
             self.error.error_alart(message=f"Error while batch adding or updating: {err}")
 
@@ -452,130 +468,3 @@ class ZZData:
             self.log.log_message(f"Error occurred while checking phone existence: {err}", 4)
             self.error.error_alart(message=f"Error occurred while checking phone existence: {err}")
             return
-
-
-class __Old_ZZData:
-    log = Log_save()
-    labels_title = ["手机号", "姓名", "客户经理", "客户级别", "意向车系", "来源平台", "参与活动", "线索类别",
-                    "购车地区", "线索创建时间", "有效跟进时间"]
-
-    def __init__(self):
-        self.error = Post_Message()
-        # 获取当前程序的运行路径
-        current_directory = os.getcwd()
-        # 定义日志目录为当前路径下的 log 文件夹
-        db_directory = os.path.join(current_directory, 'database')
-
-        db_filename = f'zzwork-database.accdb'
-        db_file_path = os.path.join(db_directory, db_filename)
-        if not os.path.exists(db_file_path):
-            os.makedirs(db_directory)
-
-        self.db_path = db_file_path
-
-        # 检查数据库文件是否存在
-        if not os.path.exists(self.db_path):
-            self.create_database()
-
-        connection_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=' + self.db_path
-        try:
-            self.conn = pyodbc.connect(connection_string)
-            self.log.log_message("Connected to database successfully")
-        except pyodbc.Error as e:
-            print("Error while connecting to database:", e)
-            self.log.log_message(f"Error while connecting to database: {e}", 4)
-            self.error.error_alart(message=f"Error while connecting to database: {e}")
-
-        self.czzdata = self.conn.cursor()
-        self.create_table()
-        pass
-
-    def create_database(self):
-        # 使用win32com.client创建一个空的Access数据库
-        access = win32.Dispatch('Access.Application')
-        # access.DBEngine.CreateDatabase(self.db_path, win32com.client.constants.dbLangGeneral)
-        access.DBEngine.CreateDatabase(self.db_path, ';LANGID=0x0409')
-        access.Quit()
-        self.log.log_message(f"Database created at {self.db_path}")
-        pass
-
-    def create_table(self):
-        create_table_query = ''' 
-            CREATE TABLE zzData ( id AUTOINCREMENT PRIMARY KEY, 
-            手机号 TEXT, 
-            姓名 TEXT, 
-            客户经理 TEXT, 
-            客户级别 TEXT, 
-            意向车系 TEXT, 
-            来源平台 TEXT, 
-            参与活动 TEXT, 
-            线索类别 TEXT, 
-            购车地区 TEXT, 
-            线索创建时间 TEXT, 
-            有效跟进时间 TEXT ) 
-            '''
-        try:
-            self.czzdata.execute(create_table_query)
-            self.conn.commit()
-            self.log.log_message("Table created successfully", 1)
-        except pyodbc.Error as e:
-            # 如果表已经存在，忽略错误
-            if "already exists" in str(e):
-                self.log.log_message(f"Table already exists, skipping creation.")
-            else:
-                self.log.log_message(f"Error while creating table: {e}", 4)
-                self.error.error_alart(message=f"Error while creating table: {e}")
-
-    pass
-
-    def add_or_update(self, phone, label, value):
-        self.czzdata.execute('SELECT * FROM zzData WHERE 手机号=?', (phone,))
-        record = self.czzdata.fetchone()
-        if record:
-            # 更新记录
-            self.czzdata.execute(f'UPDATE zzData SET {label}=? WHERE 手机号=?', (value, phone))
-            self.log.log_message(f"UPDATE zzData SET {label}={value} WHERE 手机号={phone}", 1)
-        else:
-            # 插入新记录
-            self.czzdata.execute(f'INSERT INTO zzData (手机号, {label}) VALUES (?, ?)', (phone, value))
-            self.log.log_message(f"INSERT INTO zzData (手机号, {label}) VALUES ({phone}, {value})", 1)
-        self.conn.commit()
-
-    def add_or_update_batch(self, phone, data):
-        try:
-            self.czzdata.execute('SELECT * FROM zzData WHERE 手机号=%s', (phone,))
-            record = self.czzdata.fetchone()
-            if record:
-                # 更新记录
-                for label, value in data:
-                    self.log.log_message(f"UPDATE zzData SET {label}={value} WHERE 手机号={phone}")
-                    self.czzdata.execute(f'UPDATE zzData SET {label}=%s WHERE 手机号=%s', (value, phone))
-            else:
-                # 插入新记录
-                columns = [label for label, value in data]
-                placeholders = ', '.join(['%s'] * len(columns))
-                values = [value for label, value in data]
-                columns_str = ', '.join(['手机号'] + columns)
-                placeholders_str = '%s, ' + placeholders
-                values.insert(0, phone)
-                self.log.log_message(f"INSERT INTO zzData ({columns_str}) VALUES ({placeholders_str})", 1)
-                sql_query = f'INSERT INTO zzData ({columns_str}) VALUES ({placeholders_str})'
-                self.czzdata.execute(sql_query, values)
-            self.conn.commit()
-        except mysql.connector.Error as err:
-            self.log.log_message(f"Error while batch adding or updating: {err}", 4)
-            self.error.error_alart(message=f"Error while batch adding or updating: {err}")
-
-    def query_value(self, phone, label):
-        self.czzdata.execute(f'SELECT {label} FROM zzData WHERE 手机号=?', (phone,))
-        result = self.czzdata.fetchone()
-        return result[0] if result else None
-
-    def query_values(self, phone, labels=None):
-        if labels is None:
-            labels = self.labels_title
-        values = []
-        for label in labels:
-            value = self.query_value(phone, label)
-            values.append(value)
-        return values

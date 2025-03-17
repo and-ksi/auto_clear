@@ -16,10 +16,18 @@ def test():
     ele.work_flow()
     pass
 
+
+def save_data_to_mysql():
+    ele = element_operate()
+    ele.log.start_log()
+    ele.check_data_to_mysql()
+
+
 def main():
     # 仅在此处选择要运行的函数
     test()
     # 其他函数不会自动执行
+    # save_data_to_mysql()
 
 
 if __name__ == "__main__":  # 明确程序入口
