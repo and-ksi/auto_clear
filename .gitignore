@@ -5,7 +5,7 @@ log/
 dist/
 build/
 pic/
-chrome-win64/
+chrome/
 *.spec
 test.py
 *.xlsx

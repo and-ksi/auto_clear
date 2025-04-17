@@ -24,9 +24,9 @@ def save_data_to_mysql():
 
 
 def main():
-    # 仅在此处选择要运行的函数
+
     test()
-    # 其他函数不会自动执行
+    # save_data_to_mysql()
     # save_data_to_mysql()
 
 

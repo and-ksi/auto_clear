@@ -1,3 +1,6 @@
 selenium
 requests
 pyodbc
+mysql-connector-python
+pandas
+SQLAlchemy

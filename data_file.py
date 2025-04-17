@@ -4,19 +4,17 @@ from datetime import datetime
 import configparser
 import tkinter as tk
 import requests
-import pyodbc
-import win32com.client as win32
 import mysql.connector
+import sys
 from mysql.connector import errorcode
 
-
-mysql_url = "47.122.41.220"
 
 class Post_Message:
     def __init__(self):
         self.log = Log_save(l_level="Debug")
-        self.url = "https://wxpusher.zjiecode.com/api/send/message"
-        self.appToken = "AT_ctBuoL9g9rFvk8uBogW0Bd0WSC6QMhuE"
+        config = ConfigManager()
+        self.url = config.get_data('ACCOUNT', 'post_url')
+        self.appToken = config.get_data('ACCOUNT', 'post_apptoken')
         uid_conf = ConfigManager()
         self.name_uid = uid_conf.get_all_uid()
         pass
@@ -43,7 +41,7 @@ class Post_Message:
             self.log.log_message("响应数据：", response.json())
         else:
             self.log.log_message(f"请求失败，状态码：{response.status_code}")
-            self.log.log_message("错误信息：", response.text)
+            self.log.log_message(f"错误信息： {response.text}")
         pass
 
     def error_alart(self, title="Error", message="这是一个保持在桌面显示的弹窗", error_mark=0):
@@ -51,35 +49,37 @@ class Post_Message:
         self.post_error(message)
         """显示一个保持在桌面显示的弹窗"""
         try:
-            def keep_on_top(root):
-                """使窗口保持在最前端"""
-                root.attributes("-topmost", True)
-                root.after(1000, lambda: keep_on_top(root))
+            if sys.platform.startswith("win"):
 
-            def close_window(root):
-                """关闭窗口"""
-                root.destroy()
+                def keep_on_top(root):
+                    """使窗口保持在最前端"""
+                    root.attributes("-topmost", True)
+                    root.after(1000, lambda: keep_on_top(root))
 
-            root = tk.Tk()
-            root.title("线索清洗出错")
+                def close_window(root):
+                    """关闭窗口"""
+                    root.destroy()
 
-            # 将窗口设置为全屏
-            root.attributes("-fullscreen", True)
+                root = tk.Tk()
+                root.title("线索清洗出错")
 
-            # 创建一个标签显示消息，并设置背景为红色，文字为黑色
-            label = tk.Label(root, text="线索清洗出错", font=("Helvetica", 24), bg="red", fg="black")  # 字体大小适当调大以适
-            label.pack(expand=True)
+                # 将窗口设置为全屏
+                root.attributes("-fullscreen", True)
 
-            # 创建一个关闭按钮
-            close_button = tk.Button(root, text="关闭", command=lambda: close_window(root), font=("Helvetica", 24),
-                                     bg="white", fg="black")
-            close_button.pack()
+                # 创建一个标签显示消息，并设置背景为红色，文字为黑色
+                label = tk.Label(root, text="线索清洗出错", font=("Helvetica", 24), bg="red", fg="black")  # 字体大小适当调大以适
+                label.pack(expand=True)
 
-            # 窗口保持在最前端
-            keep_on_top(root)
+                # 创建一个关闭按钮
+                close_button = tk.Button(root, text="关闭", command=lambda: close_window(root), font=("Helvetica", 24),
+                                         bg="white", fg="black")
+                close_button.pack()
 
-            # 启动主循环
-            root.mainloop()
+                # 窗口保持在最前端
+                keep_on_top(root)
+
+                # 启动主循环
+                root.mainloop()
         except:
             pass
         if error_mark:
@@ -92,14 +92,14 @@ class ConfigManager:
     def __init__(self):
         # 获取当前程序的运行路径
         current_directory = os.getcwd()
-        # 定义日志目录为当前路径下的 log 文件夹
-        config_file = os.path.join(current_directory, 'config.ini')
-        self.config_file = config_file
+        # 配置文件路径
+        self.config_file = os.path.join(current_directory, 'config.ini')
         self.config = configparser.ConfigParser()
 
-        # 如果配置文件存在，则读取它
-        if os.path.exists(config_file):
-            self.config.read(config_file)
+        # 如果配置文件存在，则使用 UTF-8 读取它
+        if os.path.exists(self.config_file):
+            with open(self.config_file, "r", encoding="utf-8") as f:
+                self.config.read_file(f)
         else:
             # 创建一个默认的配置文件
             self.default_config()
@@ -132,6 +132,47 @@ class ConfigManager:
         if self.config.has_section('NAME_LIST') and self.config.has_option('NAME_LIST', name):
             self.config.remove_option('NAME_LIST', name)
             self.save_config()
+
+    def get_account(self):
+        if not self.config.has_section('ACCOUNT'):
+            return ["", ""]  # 返回空值，避免 KeyError
+
+        account = self.config.get('ACCOUNT', 'account', fallback="")
+        password = self.config.get('ACCOUNT', 'password', fallback="")
+        return [account, password]
+
+    def change_account(self, account, password):
+        if not self.config.has_section('ACCOUNT'):
+            self.config.add_section('ACCOUNT')
+
+        self.config['ACCOUNT']['account'] = account
+        self.config['ACCOUNT']['password'] = password
+        self.save_config()
+
+    def get_code(self):
+        # 重新读取配置文件，确保获取最新的内容
+        self.config = configparser.ConfigParser()
+        with open(self.config_file, "r", encoding="utf-8") as f:
+            self.config.read_file(f)
+        if not self.config.has_section('ACCOUNT'):
+            return ""  # 返回空字符串，避免 KeyError
+        # 获取 code 值，去除前后空格
+        code = self.config.get('ACCOUNT', 'code', fallback="").strip()
+        # 检查是否为 6 位
+        if len(code) != 6:
+            return ""  # 长度不符合则返回空值，但 **不删除 code**
+        # 清空 code（只有在长度为 6 的情况下才删除）
+        self.config.set('ACCOUNT', 'code', '')
+        # 保存修改
+        with open(self.config_file, 'w', encoding='utf-8') as configfile:
+            self.config.write(configfile)  # 确保清空数据生效
+        return code
+
+    def get_data(self, section, key):
+        if not self.config.has_section(section):
+            return None
+        ret = self.config.get(section, key, fallback="")
+        return ret
 
     def add_string_group(self, name, label, value):
         """
@@ -224,6 +265,11 @@ class ConfigManager:
             '韩敏': 'UID_sNCsMWsVb2G0g6DEJpDAHT5vGs9f',
             '清洗员': 'UID_dBjKN9UIkvXggPC0NipFYGXBTAJw'
         }
+        self.config['ACCOUNT'] = {
+            'account': '17314368529',
+            'password': 'and123456',
+            'code': ''
+        }
 
     def save_config(self):
         """
@@ -274,18 +320,22 @@ class Log_save:
         self.close()
 
     def log_message(self, message, mark=2):
+        sanitized_message = self.sanitize_message(message)
         self._initialize_logger()
         if mark == 1:
-            self.logger.debug(f"{message}")
+            self.logger.debug(f"{sanitized_message}")
         elif mark == 2:
-            self.logger.info(f"{message}")
+            self.logger.info(f"{sanitized_message}")
         elif mark == 3:
-            self.logger.warning(f"{message}")
+            self.logger.warning(f"{sanitized_message}")
         elif mark == 4:
-            self.logger.error(f"{message}")
+            self.logger.error(f"{sanitized_message}")
         else:
             self.logger.error(f"Log mark error!")
         self.close()
+
+    def sanitize_message(self, message):
+        return message.encode("utf-8", errors="replace").decode("utf-8")
 
 
 class ZZData:
@@ -296,12 +346,18 @@ class ZZData:
     def __init__(self):
         self.error = Post_Message()
 
+        config = ConfigManager()
+        self.sql_usr = config.get_data('ACCOUNT', 'sql_usr')
+        self.sql_password = config.get_data('ACCOUNT', 'sql_password')
+        self.sql_host = config.get_data('ACCOUNT', 'sql_host')
+        self.sql_database = config.get_data('ACCOUNT', 'sql_database')
+
         # 设置MySQL连接参数
         self.db_config = {
-            'user': 'and',
-            'password': 'and123456',
-            'host': mysql_url,
-            'database': 'zzwork_database'
+            'user': self.sql_usr,
+            'password': self.sql_password,
+            'host': self.sql_host,
+            'database': self.sql_database
         }
 
         # 创建数据库连接
@@ -314,20 +370,29 @@ class ZZData:
                 self.error.error_alart(message="Something is wrong with your user name or password")
             elif err.errno == errorcode.ER_BAD_DB_ERROR:
                 self.log.log_message("Database does not exist. Creating database...", 4)
-
+                self.create_database()  # **实际调用创建数据库**
+                # **尝试重新连接**
+                try:
+                    self.conn = mysql.connector.connect(**self.db_config)
+                    self.log.log_message("Reconnected to newly created database")
+                except mysql.connector.Error as err:
+                    self.log.log_message(f"Failed to reconnect after creating database: {err}", 4)
+                    self.error.error_alart(message=f"Failed to reconnect: {err}")
             else:
-                self.log.log_message(err, 4)
-                self.error.error_alart(message=err)
+                self.log.log_message(repr(err), 4)
+                self.error.error_alart(message=repr(err))
 
         self.create_table()
 
     def create_database(self):
         try:
             db_config_no_db = self.db_config.copy()
-            db_config_no_db.pop('database')
+            if "database" in db_config_no_db:
+                db_config_no_db.pop("database")  # **确保不会 KeyError**
+
             conn_no_db = mysql.connector.connect(**db_config_no_db)
             cursor = conn_no_db.cursor()
-            cursor.execute("CREATE DATABASE zzwork_database DEFAULT CHARACTER SET 'utf8'")
+            cursor.execute(f"CREATE DATABASE {self.sql_database} DEFAULT CHARACTER SET 'utf8'")
             self.log.log_message("Database created successfully")
             cursor.close()
             conn_no_db.close()
