@@ -38,7 +38,7 @@ visiable_value = 1
 class element_operate:
     def __init__(self):
         # debug
-        self.log = Log_save(1)
+        self.log = Log_save(2)
         # self.zzdata = ZZData()
         self.data = []
         self.driver = None
@@ -63,11 +63,22 @@ class element_operate:
             self.chrome_driver_location = os.path.join(current_directory, 'chrome', 'chromedriver')
         self.usr_dir = os.path.join(current_directory, 'chrome', 'usr_data')
 
-    def work_flow(self):
+    def switch_in(self):
+        visiable = int(
+            input("是否需要显示浏览器？输入1浏览器将一直显示，输入0将隐藏浏览器显示。（隐藏显示可避免被他人误关闭）"))
+        mark = int(input(
+            "是否要开始读取今日线索数据？输入1开始读取，输入2跳过。(读取数据必会显示浏览器，请在浏览器打开后，筛选出想要读取的数据，之后点击弹窗的确定后开始读取到数据库。)"))
+        if mark == 1:
+            self.check_data_to_mysql()
+        else:
+            self.work_flow(visiable)
+        pass
+
+    def work_flow(self, vis):
         try:
             self.log.start_log()
             self.error_time = 0
-            self.open_new_web(visible=visiable_value)
+            self.open_new_web(visible=vis)
             self.click_on_head(2)
             self.check_clue_loop()
         finally:
@@ -741,16 +752,19 @@ class element_operate:
         code = self.try_find_element_nerror(xpath_exp)
         if code:
             self.try_click_element(code)
-            start_time = time.time()
-            while time.time() - start_time < 300:
-                code = config.get_code()
-                if code == "":
-                    time.sleep(1)
-                else:
-                    break
-            if code == "":
-                error_message = "验证码过期，请重新获取！"
-                self.error.error_alart(error_message)
+            # start_time = time.time()
+            # while time.time() - start_time < 300:
+            #     code = config.get_code()
+            #     if code == "":
+            #         time.sleep(1)
+            #     else:
+            #         break
+            # if code == "":
+            #     error_message = "验证码过期，请重新获取！"
+            #     self.error.error_alart(error_message)
+
+            code = input("请输入验证码：")
+
             xpath_exp = "//input[@class='sms' and @placeholder='请输入验证码']"
             ele = self.try_find_element(xpath_exp)
             ele.clear()
@@ -767,7 +781,7 @@ class element_operate:
             chrome_options = webdriver.ChromeOptions()
             chrome_options.binary_location = self.binary_location
             chrome_options.add_argument(f"user-data-dir={self.usr_dir}")  # 这里替换为你的 Chrome 数据路径
-            chrome_options.add_argument("--headless")  # 启用无头模式
+            chrome_options.add_argument("--headless=new")  # 启用无头模式
             chrome_options.add_argument("--disable-gpu")  # 如果需要
             chrome_options.add_argument("--window-size=1920,1080")  # 设置窗口大小，确保某些无头模式下的操作可以顺利进行
         else:
@@ -1097,6 +1111,36 @@ class element_operate:
                 exit()
             self.wait_load_mask()
 
+    def check_clue_server(self):
+        self.open_new_web(0)
+        nowtime = time.time()
+        mark = None
+        ele = None
+        while 1:
+            while get_today_18_timestamp(4) > time.time() > get_today_18_timestamp(4, 9):
+                self.driver.refresh()
+                self.click_on_head(2)
+                self.click_on_subhead(2)
+                self.click_on_radio_button(1)
+                total = self.check_item_count()
+                if total > 0:
+                    xpath_exp = "//span[contains(@class, 'click_link')]"
+                    eles = self.try_find_elements(xpath_exp)
+                    mark = 0
+
+                    for entry in eles:
+                        if entry.text == ele:
+                            mark = 1
+                            if time.time() - nowtime > 180:
+                                self.error.post_error(message="有线索3分钟没动了，看看是不是程序停止了。")
+                            break
+                    if mark != 1:
+                        ele = eles[0].text
+                        nowtime = time.time()
+                else:
+                    nowtime = time.time()
+            time.sleep(60)
+
 
 def convert_to_timestamp(time_str):
     # 提取日期和时间部分（忽略星期）
@@ -1107,10 +1151,10 @@ def convert_to_timestamp(time_str):
     return dt.timestamp()
 
 
-def get_today_18_timestamp(mini=0):
+def get_today_18_timestamp(mini=0, etime=end_time):
     # 获取当前日期对象
     today = datetime.today()
     # 替换时间为18:00:00
-    target_time = today.replace(hour=end_time, minute=mini, second=0, microsecond=0)
+    target_time = today.replace(hour=etime, minute=mini, second=0, microsecond=0)
     # 转换为时间戳
     return target_time.timestamp()

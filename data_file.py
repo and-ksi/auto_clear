@@ -123,7 +123,7 @@ class ConfigManager:
         if not self.config.has_section('NAME_LIST'):
             return []
 
-        return [[name, int(level)] for name, level in self.config.items('NAME_LIST')]
+        return [[name, float(level)] for name, level in self.config.items('NAME_LIST')]
 
     def remove_name(self, name):
         """

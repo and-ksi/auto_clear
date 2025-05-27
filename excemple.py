@@ -11,9 +11,8 @@ import time
 #     test.check_clue_loop()
 
 def test():
-    print("1")
     ele = element_operate()
-    ele.work_flow()
+    ele.switch_in()
     pass
 
 
